@@ -63,6 +63,7 @@
         box-shadow: 0 0 25px rgba(255,255,255,0.3);
         transition: transform 0.1s;
         animation: pop 0.25s ease-out;
+        z-index: 10;
     }
     .circle:active { transform: scale(0.85); }
     @keyframes pop {
@@ -106,6 +107,7 @@
         opacity: 0;
         pointer-events: none;
         text-shadow: 0 0 30px #FFD700;
+        z-index: 50;
     }
     #levelTip.show { animation: flash 1s ease-out; }
     @keyframes flash {
@@ -172,12 +174,13 @@
     let isPlaying = false;
 
     // 每关配置：圆圈数量、时间、最大尺寸
+    // 第5关时间从 4 秒改成了 8 秒，给你更多反应时间
     const levels = [
         { count: 5,  time: 6,  size: 60 },
         { count: 7,  time: 6,  size: 55 },
         { count: 9,  time: 5,  size: 50 },
         { count: 11, time: 5,  size: 45 },
-        { count: 13, time: 4,  size: 40 }
+        { count: 13, time: 8,  size: 40 }
     ];
 
     function startLevel(level) {
@@ -204,8 +207,16 @@
             circle.textContent = i;
             circle.dataset.num = i;
             const size = config.size;
-            const x = Math.random() * (areaRect.width - size);
-            const y = Math.random() * (areaRect.height - size);
+
+            // 给每个圆圈加一点随机偏移，避免完全重叠遮挡数字
+            const offsetX = (Math.random() - 0.5) * 10;
+            const offsetY = (Math.random() - 0.5) * 10;
+            let x = Math.random() * (areaRect.width - size) + offsetX;
+            let y = Math.random() * (areaRect.height - size) + offsetY;
+            // 限制不要超出边界
+            x = Math.max(0, Math.min(x, areaRect.width - size));
+            y = Math.max(0, Math.min(y, areaRect.height - size));
+
             circle.style.width = size + "px";
             circle.style.height = size + "px";
             circle.style.left = x + "px";
