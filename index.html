@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>极限反应挑战</title>
+<style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(circle at 50% 30%, #1e2a4a, #0d1224);
+        font-family: "微软雅黑", sans-serif;
+        color: white;
+        text-align: center;
+        overflow: hidden;
+        user-select: none;
+    }
+    .header {
+        padding: 20px 10px 0;
+    }
+    h1 { font-size: 22px; color: #FFD700; margin: 0 0 6px 0; letter-spacing: 2px; }
+    .subtitle { font-size: 12px; color: #7f8c8d; margin: 0 0 12px; }
+    .stats {
+        display: flex;
+        justify-content: center;
+        gap: 30px;
+        font-size: 14px;
+        margin-bottom: 10px;
+    }
+    .stats span { color: #E74C3C; font-weight: bold; font-size: 18px; }
+    #timerBar {
+        width: 90%;
+        max-width: 400px;
+        height: 8px;
+        background: #2c3e50;
+        border-radius: 4px;
+        margin: 0 auto 20px;
+        overflow: hidden;
+    }
+    #timerFill {
+        height: 100%;
+        width: 100%;
+        background: linear-gradient(90deg, #2ecc71, #f1c40f, #E74C3C);
+        transition: width 0.1s linear;
+    }
+    #playArea {
+        position: relative;
+        width: 100%;
+        height: 60vh;
+        max-height: 500px;
+        overflow: hidden;
+    }
+    .circle {
+        position: absolute;
+        border-radius: 50%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-weight: bold;
+        color: white;
+        cursor: pointer;
+        box-shadow: 0 0 25px rgba(255,255,255,0.3);
+        transition: transform 0.1s;
+        animation: pop 0.25s ease-out;
+    }
+    .circle:active { transform: scale(0.85); }
+    @keyframes pop {
+        from { transform: scale(0); opacity: 0; }
+        to { transform: scale(1); opacity: 1; }
+    }
+    .overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.85);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 99;
+        padding: 20px;
+    }
+    .overlay h2 { color: #FFD700; font-size: 24px; margin: 0 0 15px; }
+    .overlay p { color: #bdc3c7; font-size: 14px; line-height: 1.8; max-width: 320px; margin: 0 0 20px; }
+    .overlay button {
+        padding: 14px 45px;
+        font-size: 18px;
+        font-weight: bold;
+        background: linear-gradient(135deg, #E74C3C, #c0392b);
+        color: white;
+        border: none;
+        border-radius: 40px;
+        cursor: pointer;
+        box-shadow: 0 0 25px rgba(231,76,60,0.6);
+        transition: transform 0.15s;
+    }
+    .overlay button:active { transform: scale(0.95); }
+    #levelTip {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 60px;
+        font-weight: bold;
+        color: #FFD700;
+        opacity: 0;
+        pointer-events: none;
+        text-shadow: 0 0 30px #FFD700;
+    }
+    #levelTip.show { animation: flash 1s ease-out; }
+    @keyframes flash {
+        0% { opacity: 1; transform: translate(-50%, -50%) scale(1.5); }
+        100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+    }
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>⚡ 极限反应挑战 ⚡</h1>
+    <p class="subtitle">按数字顺序点击圆圈，点错扣时间！</p>
+    <div class="stats">
+        <div>关卡 <span id="levelDisplay">1</span>/5</div>
+        <div>得分 <span id="scoreDisplay">0</span></div>
+    </div>
+    <div id="timerBar"><div id="timerFill"></div></div>
+</div>
+
+<div id="playArea"></div>
+
+<div id="levelTip"></div>
+
+<!-- 开始界面 -->
+<div class="overlay" id="startOverlay">
+    <h2>⚡ 极限反应挑战 ⚡</h2>
+    <p>
+        屏幕上会随机出现彩色圆圈，<br>
+        请<b>按数字顺序</b>依次点击它们，<br>
+        点错会扣时间！<br><br>
+        共 5 关，越往后越快。<br>
+        能通关的人不到 10%，<br>
+        你敢试试吗？
+    </p>
+    <button id="startBtn">开始挑战</button>
+</div>
+
+<!-- 结束界面 -->
+<div class="overlay" id="endOverlay" style="display:none;">
+    <h2 id="endTitle">挑战结束</h2>
+    <p id="endMsg"></p>
+    <button id="restartBtn">再来一次</button>
+</div>
+
+<script>
+    const playArea = document.getElementById("playArea");
+    const timerFill = document.getElementById("timerFill");
+    const levelDisplay = document.getElementById("levelDisplay");
+    const scoreDisplay = document.getElementById("scoreDisplay");
+    const levelTip = document.getElementById("levelTip");
+    const startOverlay = document.getElementById("startOverlay");
+    const endOverlay = document.getElementById("endOverlay");
+    const endTitle = document.getElementById("endTitle");
+    const endMsg = document.getElementById("endMsg");
+
+    let currentLevel = 1;
+    let totalScore = 0;
+    let timeLeft = 0;
+    let maxTime = 0;
+    let timerInterval = null;
+    let nextNumber = 1;
+    let totalCircles = 0;
+    let isPlaying = false;
+
+    // 每关配置：圆圈数量、时间、最大尺寸
+    const levels = [
+        { count: 5,  time: 6,  size: 60 },
+        { count: 7,  time: 6,  size: 55 },
+        { count: 9,  time: 5,  size: 50 },
+        { count: 11, time: 5,  size: 45 },
+        { count: 13, time: 4,  size: 40 }
+    ];
+
+    function startLevel(level) {
+        playArea.innerHTML = "";
+        const config = levels[level - 1];
+        nextNumber = 1;
+        totalCircles = config.count;
+        maxTime = config.time;
+        timeLeft = config.time * 1000;
+        isPlaying = true;
+        levelDisplay.textContent = level;
+        levelTip.textContent = "第 " + level + " 关";
+        levelTip.classList.remove("show");
+        void levelTip.offsetWidth;
+        levelTip.classList.add("show");
+
+        // 生成圆圈
+        const colors = ["#E74C3C","#e67e22","#f1c40f","#2ecc71","#3498db","#9b59b6","#1abc9c"];
+        const areaRect = playArea.getBoundingClientRect();
+
+        for (let i = 1; i <= config.count; i++) {
+            const circle = document.createElement("div");
+            circle.className = "circle";
+            circle.textContent = i;
+            circle.dataset.num = i;
+            const size = config.size;
+            const x = Math.random() * (areaRect.width - size);
+            const y = Math.random() * (areaRect.height - size);
+            circle.style.width = size + "px";
+            circle.style.height = size + "px";
+            circle.style.left = x + "px";
+            circle.style.top = y + "px";
+            circle.style.fontSize = (size * 0.4) + "px";
+            circle.style.background = colors[(i - 1) % colors.length];
+
+            circle.addEventListener("mousedown", function(e) {
+                e.preventDefault();
+                handleTap(parseInt(this.dataset.num), this);
+            });
+            circle.addEventListener("touchstart", function(e) {
+                e.preventDefault();
+                handleTap(parseInt(this.dataset.num), this);
+            }, { passive: false });
+
+            playArea.appendChild(circle);
+        }
+
+        // 启动计时器
+        clearInterval(timerInterval);
+        timerInterval = setInterval(function() {
+            if (!isPlaying) return;
+            timeLeft -= 100;
+            const pct = Math.max(0, timeLeft / (maxTime * 1000)) * 100;
+            timerFill.style.width = pct + "%";
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                endGame(false);
+            }
+        }, 100);
+    }
+
+    function handleTap(num, el) {
+        if (!isPlaying) return;
+        if (num === nextNumber) {
+            // 正确点击
+            el.style.transform = "scale(0)";
+            el.style.opacity = "0";
+            el.style.pointerEvents = "none";
+            totalScore += 10;
+            scoreDisplay.textContent = totalScore;
+            nextNumber++;
+
+            if (nextNumber > totalCircles) {
+                // 本关通过
+                isPlaying = false;
+                clearInterval(timerInterval);
+                setTimeout(function() {
+                    if (currentLevel < 5) {
+                        currentLevel++;
+                        startLevel(currentLevel);
+                    } else {
+                        endGame(true);
+                    }
+                }, 400);
+            }
+        } else {
+            // 点错扣时间
+            timeLeft -= 1000;
+            el.style.transform = "scale(1.3)";
+            setTimeout(function() { el.style.transform = "scale(1)"; }, 150);
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                endGame(false);
+            }
+        }
+    }
+
+    function endGame(win) {
+        isPlaying = false;
+        clearInterval(timerInterval);
+        playArea.innerHTML = "";
+        startOverlay.style.display = "none";
+        endOverlay.style.display = "flex";
+
+        if (win) {
+            endTitle.textContent = "🏆 通关成功！";
+            endMsg.innerHTML = "你完成了全部 5 关！<br>最终得分：<b style='color:#FFD700;font-size:24px;'>" + totalScore + "</b><br><br>手速和反应力都超强！<br>你就是那不到 10% 的高手！";
+        } else {
+            endTitle.textContent = "💥 挑战失败";
+            endMsg.innerHTML = "你在第 <b style='color:#E74C3C;'>" + currentLevel + "</b> 关倒下了<br>最终得分：<b style='color:#FFD700;font-size:24px;'>" + totalScore + "</b><br><br>再试一次，说不定能通关！";
+        }
+    }
+
+    document.getElementById("startBtn").addEventListener("click", function() {
+        startOverlay.style.display = "none";
+        currentLevel = 1;
+        totalScore = 0;
+        scoreDisplay.textContent = "0";
+        startLevel(1);
+    });
+
+    document.getElementById("restartBtn").addEventListener("click", function() {
+        endOverlay.style.display = "none";
+        currentLevel = 1;
+        totalScore = 0;
+        scoreDisplay.textContent = "0";
+        startLevel(1);
+    });
+
+    // 防止长按选中
+    document.addEventListener("contextmenu", function(e) { e.preventDefault(); });
+</script>
+
+</body>
+</html>
