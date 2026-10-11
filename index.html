@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>极限反应挑战</title>
+<title>极限反应挑战 · 音效版</title>
 <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body {
@@ -64,6 +64,9 @@
         transition: transform 0.1s;
         animation: pop 0.25s ease-out;
         z-index: 10;
+        text-shadow: 0 0 6px rgba(0,0,0,0.7);
+        background-clip: padding-box;
+        will-change: transform, left, top;
     }
     .circle:active { transform: scale(0.85); }
     @keyframes pop {
@@ -114,9 +117,28 @@
         0% { opacity: 1; transform: translate(-50%, -50%) scale(1.5); }
         100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
     }
+    /* 静音按钮 */
+    #muteBtn {
+        position: fixed;
+        top: 12px;
+        right: 15px;
+        z-index: 200;
+        background: rgba(255,255,255,0.1);
+        border: 1px solid rgba(255,255,255,0.3);
+        color: white;
+        border-radius: 30px;
+        padding: 6px 14px;
+        font-size: 13px;
+        cursor: pointer;
+        backdrop-filter: blur(4px);
+        transition: all 0.2s;
+    }
+    #muteBtn:hover { background: rgba(255,255,255,0.25); }
 </style>
 </head>
 <body>
+
+<button id="muteBtn">🔊 音效开</button>
 
 <div class="header">
     <h1>⚡ 极限反应挑战 ⚡</h1>
@@ -154,6 +176,202 @@
 </div>
 
 <script>
+    // ========== 音频引擎（Web Audio API） ==========
+    const AudioEngine = (() => {
+        let ctx = null;
+        let enabled = true;
+        let bgmGain = null;
+        let bgmOsc = null;
+        let bgmTimer = null;
+        let bgmIndex = 0;
+        let isBgmPlaying = false;
+
+        // 初始化音频上下文（必须在用户手势后调用）
+        function init() {
+            if (ctx) return;
+            try {
+                ctx = new (window.AudioContext || window.webkitAudioContext)();
+                // 创建背景音乐总线
+                bgmGain = ctx.createGain();
+                bgmGain.gain.value = 0.12; // 背景音乐音量较低
+                bgmGain.connect(ctx.destination);
+            } catch (e) {
+                console.warn('Web Audio 初始化失败，音效不可用', e);
+                enabled = false;
+            }
+        }
+
+        // 恢复上下文（可能被浏览器挂起）
+        function resume() {
+            if (ctx && ctx.state === 'suspended') {
+                ctx.resume();
+            }
+        }
+
+        // 播放点击正确音效（清脆高音）
+        function playCorrect() {
+            if (!enabled || !ctx) return;
+            resume();
+            const t = ctx.currentTime;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(880, t);
+            osc.frequency.exponentialRampToValueAtTime(1760, t + 0.08);
+            gain.gain.setValueAtTime(0.15, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.2);
+        }
+
+        // 播放点击错误音效（低沉短促）
+        function playWrong() {
+            if (!enabled || !ctx) return;
+            resume();
+            const t = ctx.currentTime;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(180, t);
+            osc.frequency.exponentialRampToValueAtTime(80, t + 0.15);
+            gain.gain.setValueAtTime(0.12, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.25);
+        }
+
+        // 播放过关音效（上行琶音）
+        function playLevelUp() {
+            if (!enabled || !ctx) return;
+            resume();
+            const t = ctx.currentTime;
+            const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 E5 G5 C6
+            notes.forEach((freq, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0, t + i * 0.08);
+                gain.gain.linearRampToValueAtTime(0.15, t + i * 0.08 + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.08 + 0.3);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(t + i * 0.08);
+                osc.stop(t + i * 0.08 + 0.3);
+            });
+        }
+
+        // 播放失败音效（下行）
+        function playGameOver() {
+            if (!enabled || !ctx) return;
+            resume();
+            const t = ctx.currentTime;
+            const notes = [392, 329.63, 261.63, 196]; // G4 E4 C4 G3
+            notes.forEach((freq, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0, t + i * 0.12);
+                gain.gain.linearRampToValueAtTime(0.1, t + i * 0.12 + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.12 + 0.4);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(t + i * 0.12);
+                osc.stop(t + i * 0.12 + 0.4);
+            });
+        }
+
+        // 背景音乐 —— 简单的合成循环节奏（低频脉冲 + 轻打击感）
+        function startBgm() {
+            if (!enabled || !ctx || isBgmPlaying) return;
+            resume();
+            isBgmPlaying = true;
+            bgmIndex = 0;
+
+            const bassNotes = [110, 110, 130.81, 110, 146.83, 130.81, 110, 98]; // 低沉脉冲
+            const pattern = [1, 0, 0, 0, 1, 0, 1, 0]; // 节奏型
+
+            function scheduleNext() {
+                if (!isBgmPlaying || !enabled || !ctx) return;
+                const t = ctx.currentTime;
+                // 低频脉冲
+                const noteIdx = bgmIndex % bassNotes.length;
+                const freq = bassNotes[noteIdx];
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0.1, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+                osc.connect(gain);
+                gain.connect(bgmGain);
+                osc.start(t);
+                osc.stop(t + 0.25);
+
+                // 根据pattern添加轻打击（高频短音）
+                if (pattern[bgmIndex % pattern.length]) {
+                    const perc = ctx.createOscillator();
+                    const percGain = ctx.createGain();
+                    perc.type = 'square';
+                    perc.frequency.value = 1200;
+                    percGain.gain.setValueAtTime(0.04, t);
+                    percGain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+                    perc.connect(percGain);
+                    percGain.connect(bgmGain);
+                    perc.start(t);
+                    perc.stop(t + 0.06);
+                }
+
+                bgmIndex++;
+                // 继续调度 (约每秒4拍，每拍0.25秒)
+                bgmTimer = setTimeout(() => {
+                    scheduleNext();
+                }, 250);
+            }
+
+            scheduleNext();
+        }
+
+        function stopBgm() {
+            isBgmPlaying = false;
+            if (bgmTimer) {
+                clearTimeout(bgmTimer);
+                bgmTimer = null;
+            }
+        }
+
+        function setEnabled(val) {
+            enabled = val;
+            if (!val) {
+                stopBgm();
+            } else {
+                // 如果当前在游戏中（isPlaying），重新开启背景音乐
+                if (typeof isPlaying !== 'undefined' && isPlaying) {
+                    startBgm();
+                }
+            }
+        }
+
+        return {
+            init,
+            resume,
+            playCorrect,
+            playWrong,
+            playLevelUp,
+            playGameOver,
+            startBgm,
+            stopBgm,
+            setEnabled,
+            get enabled() { return enabled; }
+        };
+    })();
+
+    // ========== 游戏主逻辑 ==========
     const playArea = document.getElementById("playArea");
     const timerFill = document.getElementById("timerFill");
     const levelDisplay = document.getElementById("levelDisplay");
@@ -163,6 +381,7 @@
     const endOverlay = document.getElementById("endOverlay");
     const endTitle = document.getElementById("endTitle");
     const endMsg = document.getElementById("endMsg");
+    const muteBtn = document.getElementById("muteBtn");
 
     let currentLevel = 1;
     let totalScore = 0;
@@ -172,9 +391,8 @@
     let nextNumber = 1;
     let totalCircles = 0;
     let isPlaying = false;
+    let audioInitialized = false;
 
-    // 每关配置：圆圈数量、时间、最大尺寸
-    // 第5关时间从 4 秒改成了 8 秒，给你更多反应时间
     const levels = [
         { count: 5,  time: 6,  size: 60 },
         { count: 7,  time: 6,  size: 55 },
@@ -182,6 +400,101 @@
         { count: 11, time: 5,  size: 45 },
         { count: 13, time: 8,  size: 40 }
     ];
+
+    // 初始化音频（在第一次用户交互时）
+    function ensureAudio() {
+        if (!audioInitialized) {
+            AudioEngine.init();
+            audioInitialized = true;
+        }
+        AudioEngine.resume();
+    }
+
+    // 增强版随机位置生成 —— 避免数字被遮挡（保持原逻辑）
+    function generatePositions(count, areaWidth, areaHeight, size) {
+        const positions = [];
+        const minDistance = size * 1.25;
+        const maxAttempts = 4000;
+
+        for (let i = 0; i < count; i++) {
+            let placed = false;
+            let attempts = 0;
+            let pos = null;
+
+            while (!placed && attempts < maxAttempts) {
+                attempts++;
+                const x = Math.random() * (areaWidth - size);
+                const y = Math.random() * (areaHeight - size);
+                const candidate = { x, y };
+
+                let overlaps = false;
+                for (let j = 0; j < positions.length; j++) {
+                    const dx = candidate.x - positions[j].x;
+                    const dy = candidate.y - positions[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < minDistance) {
+                        overlaps = true;
+                        break;
+                    }
+                }
+
+                if (!overlaps) {
+                    pos = candidate;
+                    placed = true;
+                }
+            }
+
+            if (!placed) {
+                attempts = 0;
+                const relaxedDistance = size * 1.05;
+                while (!placed && attempts < 1500) {
+                    attempts++;
+                    const x = Math.random() * (areaWidth - size);
+                    const y = Math.random() * (areaHeight - size);
+                    const candidate = { x, y };
+
+                    let tooClose = false;
+                    for (let j = 0; j < positions.length; j++) {
+                        const dx = candidate.x - positions[j].x;
+                        const dy = candidate.y - positions[j].y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < relaxedDistance) {
+                            tooClose = true;
+                            break;
+                        }
+                    }
+
+                    if (!tooClose) {
+                        pos = candidate;
+                        placed = true;
+                    }
+                }
+            }
+
+            if (!placed) {
+                const cols = Math.ceil(Math.sqrt(count));
+                const rows = Math.ceil(count / cols);
+                const cellW = areaWidth / cols;
+                const cellH = areaHeight / rows;
+                const col = i % cols;
+                const row = Math.floor(i / cols);
+                const cellX = col * cellW;
+                const cellY = row * cellH;
+                const maxOffsetX = Math.max(0, cellW - size);
+                const maxOffsetY = Math.max(0, cellH - size);
+                const offsetX = Math.random() * maxOffsetX;
+                const offsetY = Math.random() * maxOffsetY;
+                pos = {
+                    x: Math.min(cellX + offsetX, areaWidth - size),
+                    y: Math.min(cellY + offsetY, areaHeight - size)
+                };
+            }
+
+            positions.push(pos);
+        }
+
+        return positions;
+    }
 
     function startLevel(level) {
         playArea.innerHTML = "";
@@ -197,32 +510,41 @@
         void levelTip.offsetWidth;
         levelTip.classList.add("show");
 
-        // 生成圆圈
+        // 播放过关音效（如果是新关卡，除了第一关开始）
+        if (level > 1 && audioInitialized) {
+            AudioEngine.playLevelUp();
+        }
+
+        // 启动背景音乐
+        if (AudioEngine.enabled) {
+            AudioEngine.startBgm();
+        }
+
         const colors = ["#E74C3C","#e67e22","#f1c40f","#2ecc71","#3498db","#9b59b6","#1abc9c"];
         const areaRect = playArea.getBoundingClientRect();
+        const areaWidth = areaRect.width;
+        const areaHeight = areaRect.height;
+        const size = config.size;
+
+        const positions = generatePositions(config.count, areaWidth, areaHeight, size);
 
         for (let i = 1; i <= config.count; i++) {
             const circle = document.createElement("div");
             circle.className = "circle";
             circle.textContent = i;
             circle.dataset.num = i;
-            const size = config.size;
 
-            // 给每个圆圈加一点随机偏移，避免完全重叠遮挡数字
-            const offsetX = (Math.random() - 0.5) * 10;
-            const offsetY = (Math.random() - 0.5) * 10;
-            let x = Math.random() * (areaRect.width - size) + offsetX;
-            let y = Math.random() * (areaRect.height - size) + offsetY;
-            // 限制不要超出边界
-            x = Math.max(0, Math.min(x, areaRect.width - size));
-            y = Math.max(0, Math.min(y, areaRect.height - size));
+            const pos = positions[i - 1];
+            const safeX = Math.min(Math.max(pos.x, 0), areaWidth - size);
+            const safeY = Math.min(Math.max(pos.y, 0), areaHeight - size);
 
             circle.style.width = size + "px";
             circle.style.height = size + "px";
-            circle.style.left = x + "px";
-            circle.style.top = y + "px";
+            circle.style.left = safeX + "px";
+            circle.style.top = safeY + "px";
             circle.style.fontSize = (size * 0.4) + "px";
             circle.style.background = colors[(i - 1) % colors.length];
+            circle.style.textShadow = "0 0 8px rgba(0,0,0,0.9)";
 
             circle.addEventListener("mousedown", function(e) {
                 e.preventDefault();
@@ -236,7 +558,6 @@
             playArea.appendChild(circle);
         }
 
-        // 启动计时器
         clearInterval(timerInterval);
         timerInterval = setInterval(function() {
             if (!isPlaying) return;
@@ -252,8 +573,10 @@
 
     function handleTap(num, el) {
         if (!isPlaying) return;
+
         if (num === nextNumber) {
             // 正确点击
+            if (audioInitialized) AudioEngine.playCorrect();
             el.style.transform = "scale(0)";
             el.style.opacity = "0";
             el.style.pointerEvents = "none";
@@ -265,6 +588,8 @@
                 // 本关通过
                 isPlaying = false;
                 clearInterval(timerInterval);
+                AudioEngine.stopBgm(); // 暂停背景音乐，准备下一关
+
                 setTimeout(function() {
                     if (currentLevel < 5) {
                         currentLevel++;
@@ -276,6 +601,7 @@
             }
         } else {
             // 点错扣时间
+            if (audioInitialized) AudioEngine.playWrong();
             timeLeft -= 1000;
             el.style.transform = "scale(1.3)";
             setTimeout(function() { el.style.transform = "scale(1)"; }, 150);
@@ -289,20 +615,25 @@
     function endGame(win) {
         isPlaying = false;
         clearInterval(timerInterval);
+        AudioEngine.stopBgm();
         playArea.innerHTML = "";
         startOverlay.style.display = "none";
         endOverlay.style.display = "flex";
 
         if (win) {
+            if (audioInitialized) AudioEngine.playLevelUp();
             endTitle.textContent = "🏆 通关成功！";
             endMsg.innerHTML = "你完成了全部 5 关！<br>最终得分：<b style='color:#FFD700;font-size:24px;'>" + totalScore + "</b><br><br>手速和反应力都超强！<br>你就是那不到 10% 的高手！";
         } else {
+            if (audioInitialized) AudioEngine.playGameOver();
             endTitle.textContent = "💥 挑战失败";
             endMsg.innerHTML = "你在第 <b style='color:#E74C3C;'>" + currentLevel + "</b> 关倒下了<br>最终得分：<b style='color:#FFD700;font-size:24px;'>" + totalScore + "</b><br><br>再试一次，说不定能通关！";
         }
     }
 
+    // 开始按钮
     document.getElementById("startBtn").addEventListener("click", function() {
+        ensureAudio();
         startOverlay.style.display = "none";
         currentLevel = 1;
         totalScore = 0;
@@ -310,7 +641,9 @@
         startLevel(1);
     });
 
+    // 重新开始按钮
     document.getElementById("restartBtn").addEventListener("click", function() {
+        ensureAudio();
         endOverlay.style.display = "none";
         currentLevel = 1;
         totalScore = 0;
@@ -318,8 +651,33 @@
         startLevel(1);
     });
 
+    // 静音切换
+    muteBtn.addEventListener("click", function() {
+        if (!audioInitialized) {
+            ensureAudio();
+        }
+        const newState = !AudioEngine.enabled;
+        AudioEngine.setEnabled(newState);
+        muteBtn.textContent = newState ? '🔊 音效开' : '🔇 音效关';
+        if (newState && isPlaying) {
+            AudioEngine.startBgm();
+        } else {
+            AudioEngine.stopBgm();
+        }
+    });
+
     // 防止长按选中
     document.addEventListener("contextmenu", function(e) { e.preventDefault(); });
+
+    // 预加载音频上下文（首次点击任意位置时初始化，保证用户手势后能播放）
+    document.body.addEventListener('click', function once() {
+        ensureAudio();
+        document.body.removeEventListener('click', once);
+    }, { once: true });
+    document.body.addEventListener('touchstart', function once() {
+        ensureAudio();
+        document.body.removeEventListener('touchstart', once);
+    }, { once: true });
 </script>
 
 </body>
